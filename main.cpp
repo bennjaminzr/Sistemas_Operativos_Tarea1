@@ -110,18 +110,24 @@ int main(int argc, char *argv[]) {
     }
 
 
-
-
-       std::printf("%zu actividades leidas\n", actividades.size());
-
-    for (const Actividad &a : actividades) {
-        for (const std::string &d : a.deps) {
-            if (indice.find(d) == indice.end()) {
-                std::fprintf(stderr, "La actividad '%s' depende de '%s', que no existe\n",
-                             a.id.c_str(), d.c_str());
-                return 1;
-            }
+    std::vector<std::vector<int>> dependientes(actividades.size());
+    std::vector<int> pendientes(actividades.size(), 0);
+    for (size_t i = 0; i < actividades.size(); i++) {
+        for(const std::string &d : actividades[i].deps) {
+            int j = indice.at(d);
+            dependientes[j].push_back(static_cast<int>(i));
+            pendientes[i]++;
         }
+
+    }
+
+    for (size_t i = 0; i < actividades.size(); i++) {
+        std::printf("%s: pendientes=%d, le siguen:", actividades[i].id.c_str(),
+                    pendientes[i]);
+        for (int j : dependientes[i]) {
+            std::printf(" %s", actividades[j].id.c_str());
+        }
+        std::printf("\n");
     }
 
     return 0;
