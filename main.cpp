@@ -6,6 +6,7 @@
 #include <random>
 #include "plan.hpp"
 #include <unordered_map>
+#include <queue>
 
 std::string recortar(const std::string &s) {
 
@@ -119,6 +120,34 @@ int main(int argc, char *argv[]) {
             pendientes[i]++;
         }
 
+    }
+
+    std::vector<int> restantes = pendientes;
+    std::queue<int> listos;
+    for (size_t i = 0; i < actividades.size(); i++) {
+        if (restantes[i] == 0) listos.push(static_cast<int>(i));
+    }
+
+    size_t procesadas = 0;
+    while (!listos.empty()) {
+        int i = listos.front();
+        listos.pop();
+        procesadas++;
+        for (int j : dependientes[i]) {
+            restantes[j]--;
+            if (restantes[j] == 0) listos.push(j);
+        }
+    }
+
+    if (procesadas != actividades.size()) {
+        std::fprintf(stderr, "El plan tiene un ciclo de dependencias. Bloqueadas:");
+        for (size_t i = 0; i < actividades.size(); i++) {
+            if (restantes[i] > 0) {
+                std::fprintf(stderr, " %s", actividades[i].id.c_str());
+            }
+        }
+        std::fprintf(stderr, "\n");
+        return 1;
     }
 
     for (size_t i = 0; i < actividades.size(); i++) {
