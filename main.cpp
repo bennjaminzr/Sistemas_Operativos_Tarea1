@@ -32,7 +32,7 @@ std::vector<std::string> dividir(const std::string &s, char sep) {
 
 }
 
-return partes;
+    return partes;
 }
 
 
@@ -46,6 +46,8 @@ int main(int argc, char *argv[]) {
     }
 
     std::ifstream archivo(argv[1]);
+
+
     if (!archivo)   {
         std::fprintf(stderr, "No se pudo abrir '%s'\n", argv[1]);
         return 1;
@@ -53,13 +55,21 @@ int main(int argc, char *argv[]) {
     }
 
     std::string linea;
-    int n = 0;
     std::vector<Actividad> actividades;
+    int n = 0;
     std:: mt19937 rng{std::random_device{}()};
     std::uniform_int_distribution<long> sorteo(100, 5000);
+
     while (std::getline(archivo, linea)) {
         n++;
+        if (recortar(linea).empty()) continue;
         std::vector<std::string> campos = dividir(linea, ':');
+
+        if (campos.size() != 4) {
+            std::fprintf(stderr, "linea %d: formato invalido\n", n);
+            return 1;
+        }
+
         Actividad a;
         a.id = recortar(campos[0]);
         a.nombre = recortar(campos[1]);
@@ -70,24 +80,36 @@ int main(int argc, char *argv[]) {
             a.tiempo_ms = std::strtol(t.c_str(), nullptr, 10);
         }
 
+    
         for(const std::string &d : dividir(campos[3], ',')) {
             std::string dep = recortar(d);
             if (!dep.empty()) a.deps.push_back(dep);
         }
 
-        std::printf("id=[%s] nombre=[%s] tiempo=%ld deps:", a.id.c_str(),
-                    a.nombre.c_str(), a.tiempo_ms);
-        for (const std::string &d : a.deps) std::printf(" [%s]", d.c_str());
-        std::printf("\n");
-        for (const std::string &c : campos) {
-            std::printf(" [%s]", recortar(c).c_str());
+        
+        actividades.push_back(a);
+
+
+     
+
+
+
+    }
+    if (actividades.empty()) {
+        std::fprintf(stderr, "El plan no contiene actividades\n");
+        return 1;
+    }
+
+       std::printf("%zu actividades leidas\n", actividades.size());
+       
+    for (const Actividad &a : actividades) {
+        std::printf("[%s] %s (%ld ms) deps:", a.id.c_str(), a.nombre.c_str(),
+                    a.tiempo_ms);
+        for (const std::string &d : a.deps) {
+            std::printf(" [%s]", d.c_str());
         }
+        std::printf("\n");
+    }
 
-
-    std::printf("\n");
-
-   
-
-}
- return 0;
+    return 0;
 }
