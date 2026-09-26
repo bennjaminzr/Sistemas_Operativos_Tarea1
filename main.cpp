@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <random>
 #include "plan.hpp"
+#include <unordered_map>
 
 std::string recortar(const std::string &s) {
 
@@ -100,15 +101,27 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-       std::printf("%zu actividades leidas\n", actividades.size());
-       
-    for (const Actividad &a : actividades) {
-        std::printf("[%s] %s (%ld ms) deps:", a.id.c_str(), a.nombre.c_str(),
-                    a.tiempo_ms);
-        for (const std::string &d : a.deps) {
-            std::printf(" [%s]", d.c_str());
+    std::unordered_map<std::string, int> indice;
+    for (size_t i = 0; i < actividades.size(); i++) {
+        if (!indice.insert({actividades[i].id, static_cast<int>(i)}).second) {
+            std::fprintf(stderr, "ID duplicado: %s\n", actividades[i].id.c_str());
+            return 1;
         }
-        std::printf("\n");
+    }
+
+
+
+
+       std::printf("%zu actividades leidas\n", actividades.size());
+
+    for (const Actividad &a : actividades) {
+        for (const std::string &d : a.deps) {
+            if (indice.find(d) == indice.end()) {
+                std::fprintf(stderr, "La actividad '%s' depende de '%s', que no existe\n",
+                             a.id.c_str(), d.c_str());
+                return 1;
+            }
+        }
     }
 
     return 0;
