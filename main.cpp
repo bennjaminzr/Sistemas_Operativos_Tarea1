@@ -7,6 +7,8 @@
 #include "plan.hpp"
 #include <unordered_map>
 #include <queue>
+#include <unistd.h>
+#include <sys/wait.h>
 
 std::string recortar(const std::string &s) {
 
@@ -45,6 +47,12 @@ int main(int argc, char *argv[]) {
         std::fprintf(stderr, "Uso: %s plan.txt K\n", argv[0]);
         return 1;
 
+    }
+
+    int K = std::atoi(argv[2]);
+    if (K <= 0) {
+        std::fprintf(stderr, "K debe ser un numero mayor a 0\n");
+        return 1;
     }
 
     std::ifstream archivo(argv[1]);
@@ -150,14 +158,65 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+        
+
+    std::vector<int> restantes_exec = pendientes; 
+    std::queue<int> listos_exec;
     for (size_t i = 0; i < actividades.size(); i++) {
-        std::printf("%s: pendientes=%d, le siguen:", actividades[i].id.c_str(),
-                    pendientes[i]);
-        for (int j : dependientes[i]) {
-            std::printf(" %s", actividades[j].id.c_str());
-        }
-        std::printf("\n");
+        if (restantes_exec[i] == 0) listos_exec.push(static_cast<int>(i));
     }
 
+    int procesos_activos = 0;
+    std::unordered_map<pid_t, int> pid_a_indice; 
+
+    size_t terminadas = 0;
+
+    while (terminadas < actividades.size()) {
+
+        
+        while (procesos_activos < K && !listos_exec.empty()) {
+            int i = listos_exec.front();
+            listos_exec.pop();
+
+            pid_t pid = fork();
+
+            if (pid < 0) {
+                std::fprintf(stderr, "Error al crear proceso para %s\n",
+                             actividades[i].id.c_str());
+                return 1;
+            }
+
+            if (pid == 0) {
+                
+                std::printf("[%s] iniciando (%ld ms)\n",
+                            actividades[i].id.c_str(), actividades[i].tiempo_ms);
+                usleep(actividades[i].tiempo_ms * 1000);
+                std::printf("[%s] terminado\n", actividades[i].id.c_str());
+                _exit(0);
+            }
+
+            
+            pid_a_indice[pid] = i;
+            procesos_activos++;
+        }
+
+        
+        if (procesos_activos > 0) {
+            int estado;
+            pid_t pid_terminado = waitpid(-1, &estado, 0); 
+
+            int i = pid_a_indice[pid_terminado];
+            procesos_activos--;
+            terminadas++;
+
+            
+            for (int j : dependientes[i]) {
+                restantes_exec[j]--;
+                if (restantes_exec[j] == 0) listos_exec.push(j);
+            }
+        }
+    }
+
+    std::printf("Todas las actividades terminaron.\n");
     return 0;
 }
