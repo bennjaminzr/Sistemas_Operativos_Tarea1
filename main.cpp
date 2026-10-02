@@ -222,6 +222,16 @@ int main(int argc, char *argv[]) {
             pid_t pid_terminado = waitpid(-1, &estado, 0); 
 
             int i = pid_a_indice[pid_terminado];
+
+            std::string ruta = "/tmp/fifo_" + actividades[i].id;
+            int fd = open(ruta.c_str(), O_RDONLY);
+            char buffer[64] = {0};
+            read(fd, buffer, sizeof(buffer) - 1);
+            close(fd);
+            unlink(ruta.c_str());
+
+            std::printf("[%s] mensaje recibido: %s\n", actividades[i].id.c_str(), buffer);
+
             procesos_activos--;
             terminadas++;
 
