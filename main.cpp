@@ -9,6 +9,9 @@
 #include <queue>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>   
+#include <fcntl.h>       
+#include <cstring>
 
 std::string recortar(const std::string &s) {
 
@@ -167,9 +170,16 @@ int main(int argc, char *argv[]) {
     }
 
     int procesos_activos = 0;
-    std::unordered_map<pid_t, int> pid_a_indice; 
+    std::unordered_map<pid_t, int> pid_a_indice;
+    std::unordered_map<pid_t, int> pid_a_fd;
 
     size_t terminadas = 0;
+
+    for (size_t i = 0; i < actividades.size(); i++) {
+    std::string ruta = "/tmp/fifo_" + actividades[i].id;
+    unlink(ruta.c_str());
+    mkfifo(ruta.c_str(), 0666);
+    }
 
     while (terminadas < actividades.size()) {
 
@@ -192,12 +202,24 @@ int main(int argc, char *argv[]) {
                             actividades[i].id.c_str(), actividades[i].tiempo_ms);
                 usleep(actividades[i].tiempo_ms * 1000);
                 std::printf("[%s] terminado\n", actividades[i].id.c_str());
+
+                std::string ruta = "/tmp/fifo_" + actividades[i].id;
+                int fd = open(ruta.c_str(), O_WRONLY);
+                const char *msg = "OK";
+                write(fd, msg, strlen(msg));
+                close(fd);
+
                 _exit(0);
             }
 
             
             pid_a_indice[pid] = i;
             procesos_activos++;
+            
+            std::string ruta = "/tmp/fifo_" + actividades[i].id;
+            int fd_lectura = open(ruta.c_str(), O_RDONLY | O_NONBLOCK);
+            pid_a_fd[pid] = fd_lectura;
+
         }
 
         
@@ -206,10 +228,20 @@ int main(int argc, char *argv[]) {
             pid_t pid_terminado = waitpid(-1, &estado, 0); 
 
             int i = pid_a_indice[pid_terminado];
+            int fd = pid_a_fd[pid_terminado];
+
+            char buffer[64] = {0};
+            read(fd, buffer, sizeof(buffer) - 1);
+            close(fd);
+
+            std::string ruta = "/tmp/fifo_" + actividades[i].id;
+            unlink(ruta.c_str());
+
+         std::printf("[%s] mensaje recibido: %s\n", actividades[i].id.c_str(), buffer);
+
             procesos_activos--;
             terminadas++;
 
-            
             for (int j : dependientes[i]) {
                 restantes_exec[j]--;
                 if (restantes_exec[j] == 0) listos_exec.push(j);
