@@ -1,43 +1,125 @@
-# Planificador dieciochero
+# Planificador Dieciochero
 
-Tarea 1 de Sistemas operativos: simulador y planificador de activiades modeladas como un grafo aciclico dirigido (DAG),
-usnado procesos pipes y señales.
+Tarea 1 de Sistemas Operativos. El programa simula un día de celebración
+dieciochera como un grafo de actividades con dependencias (un DAG), donde
+cada actividad corre en su propio proceso y el padre se encarga de ir
+lanzándolas en el orden correcto, respetando un límite de concurrencia.
 
-Integrantes : Matias Marchant y Bnejamin Aguilera
+**Integrantes:** Matías Marchant y Benjamín Aguilera
 
-## Compilacion
- Requiere g++
+## Cómo compilar y ejecutar
 
- ```bash
- make
- ```
+Se necesita `g++` con soporte para C++17.
 
- Esto ejecuta `g++ -Wall -Wextra -std=c++17 ... -lpthread`. Para limpiar el ejecutable:
+```bash
+make
+```
 
- ```bash
- make clean
- ```
+El Makefile corre `g++ -Wall -Wextra -std=c++17 ... -lpthread`, tal como pide
+el enunciado. `make clean` borra el ejecutable.
 
-## Ejecucion 
- 
- ```bash
- ./planificador plan.txt K
- ```
- 
- - `plan.txt`: archivo con las actividades.
- - `K`: límite de concurrencia (entero mayor o igual a 1).
+Para correrlo:
 
-## Formato de ´plan.txt´
+```bash
+./planificador plan.txt K
+```
 
- ```
- ID : nombre : tiempo_ms : dep1, dep2, ...
- ```
+`plan.txt` es el archivo con las actividades y `K` es cuántos procesos pueden
+estar vivos al mismo tiempo.
 
-### Parseo de `plan.txt`
+También se puede forzar que algunas actividades fallen, para probar que el
+programa aísla bien los errores:
 
- - `struct Actividad` (`plan.hpp`): guarda el `id`, el `nombre`, el `tiempo_ms`
-  y la lista de dependencias (`deps`) de una actividad.
- - `recortar`: elimina espacios, tabs y saltos de línea al inicio y al final de un texto.
- - `dividir`: parte un texto por un carácter separador, conservando los campos vacíos.
- - Lectura en `main`: lee el archivo línea por línea, ignora las líneas vacías,
-  divide cada línea en 4 campos y construye una `Actividad`.
+```bash
+FALLO_PROB=30 ./planificador plan.txt K
+```
+
+Ese `30` es el porcentaje de probabilidad de que cada actividad falle. Si no
+se define esta variable, nunca falla nada.
+
+## El formato de plan.txt
+
+Cada línea describe una actividad:
+
+```
+ID : nombre : tiempo_ms : dep1, dep2, ...
+```
+
+El tiempo puede quedar vacío, y ahí se sortea uno entre 100 y 5000 ms. Las
+dependencias también pueden ir vacías si la actividad no espera a nada.
+
+## Qué hace el programa, por partes
+
+**Leer el plan.** `plan.cpp` (bueno, por ahora todo está en `main.cpp`) lee el
+archivo línea por línea, separa cada línea por los `:` con la función
+`dividir`, y limpia los espacios con `recortar`. Si una línea no tiene los 4
+campos esperados, el programa avisa en qué línea está el problema y corta la
+ejecución ahí, en vez de intentar adivinar.
+
+**Armar el grafo.** Cada actividad guarda los IDs de sus dependencias como
+texto, pero para trabajar rápido conviene tener todo en números. Por eso se
+arma un `unordered_map` que traduce cada ID a su posición en la lista. Con eso
+se construyen dos cosas: para cada actividad, quiénes dependen de ella
+(`dependientes`), y cuántas dependencias le faltan por cumplir (`pendientes`).
+De paso se revisa que no haya IDs repetidos ni dependencias que apunten a
+actividades que no existen.
+
+Antes de ejecutar nada, se simula el orden topológico completo (algoritmo de
+Kahn) solo para detectar si el plan tiene un ciclo. Si una actividad nunca
+llega a tener 0 dependencias pendientes, es porque está encerrada en un ciclo
+junto a otras, y ahí se informa cuáles son y se corta.
+
+**Ejecutar con procesos.** Las actividades listas (sin dependencias) se van
+sacando de una cola y cada una se lanza con `fork()`. El padre nunca deja que
+haya más de K hijos corriendo a la vez: si ya llegó al límite, deja de lanzar
+y espera a que alguno termine con `waitpid`, que bloquea sin gastar CPU (nada
+de ciclos revisando a cada rato si ya terminó).
+
+**Mensajes entre procesos.** Cuando un hijo termina, tiene que avisarle al
+padre. Para eso se usan pipes con nombre (FIFOs), uno por actividad, creados
+con el PID del hijo en el nombre del archivo
+(`/tmp/fifo_<pid>_<id>`) para que no choquen si alguien corre el programa dos
+veces al mismo tiempo. El hijo escribe "OK" o "FALLO" y cierra; el padre lo
+lee apenas confirma con `waitpid` que el hijo ya terminó.
+
+**Si algo falla.** El padre no se queda solo con el mensaje del pipe, también
+mira el código de salida real del proceso (`WIFEXITED`, `WEXITSTATUS`). Si una
+actividad falla, se marca a todos los que dependían de ella (y a los que
+dependían de esos, y así en cadena) para que nunca se ejecuten. El resto del
+plan, si no tiene nada que ver con la rama que falló, sigue como si nada.
+
+## Por qué tomamos estas decisiones
+
+Usamos C++ y no C porque `std::string` y `std::vector` ahorran mucho trabajo
+de manejo de memoria que en C habría que hacer a mano, y para una tarea con
+este plazo eso importa.
+
+El ID lo guardamos como string y no como número porque el enunciado dice que
+es alfanumérico, así que podría venir como "A1" y no solo como un entero.
+
+Para esperar a los hijos usamos `waitpid` bloqueante en vez de meter un
+`poll` o `select`. Hace exactamente lo que se pide (nada de busy-waiting) y es
+bastante más simple de razonar y de explicar.
+
+Los pipes los hicimos con nombre (`mkfifo`) en vez de pipes anónimos. La razón
+principal es que así cada mensaje queda asociado a un archivo identificable
+por actividad, lo que hizo más fácil debuggear cuando algo no llegaba. El
+riesgo de este enfoque es que si dos ejecuciones corren a la vez en la misma
+máquina podrían chocar los nombres, así que metimos el PID del hijo en el
+nombre del archivo para evitarlo.
+
+Lo de `FALLO_PROB` como variable de entorno fue para poder demostrar que el
+aislamiento de errores funciona sin tener que inventar un formato especial
+dentro de `plan.txt`. Por defecto el programa es determinista (nunca falla
+nada), y solo si uno quiere probarlo activa la variable.
+
+## Qué falta
+
+- [x] Parseo de plan.txt
+- [x] Modelado del DAG y detección de ciclos
+- [x] Creación de procesos por actividad
+- [x] Control de concurrencia K
+- [x] Paso de mensajes con pipes
+- [x] Aislamiento de errores
+- [x] Manejo de Ctrl+C (SIGINT)
+- [ ] Prueba con plan de 10000 actividades

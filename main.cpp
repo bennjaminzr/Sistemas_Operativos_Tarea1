@@ -13,6 +13,7 @@
 #include <fcntl.h>       
 #include <cstring>
 #include <ctime>
+#include <csignal>
 
 std::string recortar(const std::string &s) {
 
@@ -43,7 +44,11 @@ std::vector<std::string> dividir(const std::string &s, char sep) {
     return partes;
 }
 
+static volatile sig_atomic_t interrumpido = 0;
 
+void manejar_sigint(int) {
+    interrumpido = 1;
+}
 
 
 int main(int argc, char *argv[]) {
@@ -185,11 +190,15 @@ int main(int argc, char *argv[]) {
     }
     std::vector<bool> abortada(actividades.size(), false);
 
+     struct sigaction sa;
+    sa.sa_handler = manejar_sigint;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT, &sa, nullptr);
 
-    while (terminadas < actividades.size()) {
+     while (terminadas < actividades.size() && !interrumpido) {
 
-        
-        while (procesos_activos < K && !listos_exec.empty()) {
+        while (!interrumpido && procesos_activos < K && !listos_exec.empty()) {
             int i = listos_exec.front();
             listos_exec.pop();
 
@@ -213,9 +222,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
 
-            
             if (pid == 0) {
-
                 std::printf("[%s] iniciando (%ld ms)\n",
                             actividades[i].id.c_str(), actividades[i].tiempo_ms);
                 std::fflush(stdout);
@@ -247,9 +254,8 @@ int main(int argc, char *argv[]) {
                 _exit(exito ? 0 : 1);
             }
 
-            
             std::string ruta = "/tmp/fifo_" + std::to_string(pid) + "_" +
-            actividades[i].id;
+                                actividades[i].id;
             unlink(ruta.c_str());
             mkfifo(ruta.c_str(), 0666);
 
@@ -258,13 +264,17 @@ int main(int argc, char *argv[]) {
 
             int fd_lectura = open(ruta.c_str(), O_RDONLY | O_NONBLOCK);
             pid_a_fd[pid] = fd_lectura;
-
         }
 
-        
-         if (procesos_activos > 0) {
+        if (interrumpido) break;
+
+        if (procesos_activos > 0) {
             int estado;
             pid_t pid_terminado = waitpid(-1, &estado, 0);
+
+            if (pid_terminado == -1) {
+                break;
+            }
 
             int i = pid_a_indice[pid_terminado];
             int fd = pid_a_fd[pid_terminado];
@@ -290,6 +300,8 @@ int main(int argc, char *argv[]) {
 
             procesos_activos--;
             terminadas++;
+            pid_a_indice.erase(pid_terminado);
+            pid_a_fd.erase(pid_terminado);
 
             for (int j : dependientes[i]) {
                 if (!exito) abortada[j] = true;
@@ -297,6 +309,25 @@ int main(int argc, char *argv[]) {
                 if (restantes_exec[j] == 0) listos_exec.push(j);
             }
         }
+    }
+
+    if (interrumpido) {
+        std::fprintf(stderr, "\nSIGINT recibido. Abortando todas las actividades...\n");
+
+        for (auto &par : pid_a_indice) {
+            kill(par.first, SIGKILL);
+        }
+        for (auto &par : pid_a_indice) {
+            int estado;
+            waitpid(par.first, &estado, 0);
+            close(pid_a_fd[par.first]);
+            std::string ruta = "/tmp/fifo_" + std::to_string(par.first) + "_" +
+                                actividades[par.second].id;
+            unlink(ruta.c_str());
+        }
+
+        std::fprintf(stderr, "Planificador abortado por el usuario.\n");
+        return 1;
     }
 
     std::printf("Todas las actividades terminaron.\n");
