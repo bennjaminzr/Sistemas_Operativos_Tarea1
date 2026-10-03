@@ -205,6 +205,7 @@ int main(int argc, char *argv[]) {
             if (abortada[i]) {
                 std::printf("[%s] No hay carbon\n",
                             actividades[i].id.c_str());
+                std::fflush(stdout);
                 terminadas++;
                 for (int j : dependientes[i]) {
                     abortada[j] = true;
@@ -292,6 +293,7 @@ int main(int argc, char *argv[]) {
             if (exito) {
                 std::printf("[%s] avisado %s\n",
                             actividades[i].id.c_str(), buffer);
+                std::fflush(stdout);
             } else {
                 std::fprintf(stderr,
                              "[%s] fallo detectado, se abortan sus dependientes\n",
