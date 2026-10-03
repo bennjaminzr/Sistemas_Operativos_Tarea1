@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
             listos_exec.pop();
 
             if (abortada[i]) {
-                std::printf("[%s] abortada (dependencia fallida)\n",
+                std::printf("[%s] No hay carbon\n",
                             actividades[i].id.c_str());
                 terminadas++;
                 for (int j : dependientes[i]) {
@@ -223,7 +223,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (pid == 0) {
-                std::printf("[%s] iniciando (%ld ms)\n",
+                std::printf("[%s] la comida se pone al fuego (%ld ms)\n",
                             actividades[i].id.c_str(), actividades[i].tiempo_ms);
                 std::fflush(stdout);
 
@@ -235,9 +235,9 @@ int main(int argc, char *argv[]) {
                 bool exito = !(fallo_prob > 0 && (rand() % 100) < fallo_prob);
 
                 if (exito) {
-                    std::printf("[%s] terminado\n", actividades[i].id.c_str());
+                    std::printf("[%s] ready la comida\n", actividades[i].id.c_str());
                 } else {
-                    std::fprintf(stderr, "[%s] fallo simulado\n",
+                    std::fprintf(stderr, "[%s] quedo la caga\n",
                                  actividades[i].id.c_str());
                 }
                 std::fflush(stdout);
@@ -290,7 +290,7 @@ int main(int argc, char *argv[]) {
             bool exito = WIFEXITED(estado) && WEXITSTATUS(estado) == 0;
 
             if (exito) {
-                std::printf("[%s] mensaje recibido: %s\n",
+                std::printf("[%s] avisado %s\n",
                             actividades[i].id.c_str(), buffer);
             } else {
                 std::fprintf(stderr,
@@ -312,7 +312,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (interrumpido) {
-        std::fprintf(stderr, "\nSIGINT recibido. Abortando todas las actividades...\n");
+        std::fprintf(stderr, "\nllegaron los pacos\n");
 
         for (auto &par : pid_a_indice) {
             kill(par.first, SIGKILL);
@@ -326,10 +326,10 @@ int main(int argc, char *argv[]) {
             unlink(ruta.c_str());
         }
 
-        std::fprintf(stderr, "Planificador abortado por el usuario.\n");
+        std::fprintf(stderr, "Por lluvia se cierra el asado\n");
         return 1;
     }
 
-    std::printf("Todas las actividades terminaron.\n");
+    std::printf("Todos felices gracias a dios\n");
     return 0;
 }
