@@ -12,6 +12,7 @@
 #include <sys/stat.h>   
 #include <fcntl.h>       
 #include <cstring>
+#include <ctime>
 
 std::string recortar(const std::string &s) {
 
@@ -175,11 +176,15 @@ int main(int argc, char *argv[]) {
 
     size_t terminadas = 0;
 
-    for (size_t i = 0; i < actividades.size(); i++) {
-    std::string ruta = "/tmp/fifo_" + actividades[i].id;
-    unlink(ruta.c_str());
-    mkfifo(ruta.c_str(), 0666);
+
+    int fallo_prob = 0;
+    if (const char *env = std::getenv("FALLO_PROB")) {
+        fallo_prob = std::atoi(env);
+        if (fallo_prob < 0) fallo_prob = 0;
+        if (fallo_prob > 100) fallo_prob = 100;
     }
+    std::vector<bool> abortada(actividades.size(), false);
+
 
     while (terminadas < actividades.size()) {
 
@@ -187,6 +192,18 @@ int main(int argc, char *argv[]) {
         while (procesos_activos < K && !listos_exec.empty()) {
             int i = listos_exec.front();
             listos_exec.pop();
+
+            if (abortada[i]) {
+                std::printf("[%s] abortada (dependencia fallida)\n",
+                            actividades[i].id.c_str());
+                terminadas++;
+                for (int j : dependientes[i]) {
+                    abortada[j] = true;
+                    restantes_exec[j]--;
+                    if (restantes_exec[j] == 0) listos_exec.push(j);
+                }
+                continue;
+            }
 
             pid_t pid = fork();
 
@@ -196,36 +213,58 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
 
+            
             if (pid == 0) {
-                
+
                 std::printf("[%s] iniciando (%ld ms)\n",
                             actividades[i].id.c_str(), actividades[i].tiempo_ms);
+                std::fflush(stdout);
+
                 usleep(actividades[i].tiempo_ms * 1000);
-                std::printf("[%s] terminado\n", actividades[i].id.c_str());
 
-                std::string ruta = "/tmp/fifo_" + actividades[i].id;
+                unsigned semilla = static_cast<unsigned>(getpid()) ^
+                                   static_cast<unsigned>(time(nullptr));
+                srand(semilla);
+                bool exito = !(fallo_prob > 0 && (rand() % 100) < fallo_prob);
+
+                if (exito) {
+                    std::printf("[%s] terminado\n", actividades[i].id.c_str());
+                } else {
+                    std::fprintf(stderr, "[%s] fallo simulado\n",
+                                 actividades[i].id.c_str());
+                }
+                std::fflush(stdout);
+
+                std::string ruta = "/tmp/fifo_" + std::to_string(getpid()) + "_" +
+                                    actividades[i].id;
                 int fd = open(ruta.c_str(), O_WRONLY);
-                const char *msg = "OK";
-                write(fd, msg, strlen(msg));
-                close(fd);
+                const char *msg = exito ? "OK" : "FALLO";
+                if (fd != -1) {
+                    write(fd, msg, strlen(msg));
+                    close(fd);
+                }
 
-                _exit(0);
+                _exit(exito ? 0 : 1);
             }
 
             
+            std::string ruta = "/tmp/fifo_" + std::to_string(pid) + "_" +
+            actividades[i].id;
+            unlink(ruta.c_str());
+            mkfifo(ruta.c_str(), 0666);
+
             pid_a_indice[pid] = i;
             procesos_activos++;
-            
-            std::string ruta = "/tmp/fifo_" + actividades[i].id;
+
             int fd_lectura = open(ruta.c_str(), O_RDONLY | O_NONBLOCK);
             pid_a_fd[pid] = fd_lectura;
 
         }
 
         
-        if (procesos_activos > 0) {
+         if (procesos_activos > 0) {
             int estado;
-            pid_t pid_terminado = waitpid(-1, &estado, 0); 
+            pid_t pid_terminado = waitpid(-1, &estado, 0);
 
             int i = pid_a_indice[pid_terminado];
             int fd = pid_a_fd[pid_terminado];
@@ -234,15 +273,26 @@ int main(int argc, char *argv[]) {
             read(fd, buffer, sizeof(buffer) - 1);
             close(fd);
 
-            std::string ruta = "/tmp/fifo_" + actividades[i].id;
+            std::string ruta = "/tmp/fifo_" + std::to_string(pid_terminado) + "_" +
+                                actividades[i].id;
             unlink(ruta.c_str());
 
-         std::printf("[%s] mensaje recibido: %s\n", actividades[i].id.c_str(), buffer);
+            bool exito = WIFEXITED(estado) && WEXITSTATUS(estado) == 0;
+
+            if (exito) {
+                std::printf("[%s] mensaje recibido: %s\n",
+                            actividades[i].id.c_str(), buffer);
+            } else {
+                std::fprintf(stderr,
+                             "[%s] fallo detectado, se abortan sus dependientes\n",
+                             actividades[i].id.c_str());
+            }
 
             procesos_activos--;
             terminadas++;
 
             for (int j : dependientes[i]) {
+                if (!exito) abortada[j] = true;
                 restantes_exec[j]--;
                 if (restantes_exec[j] == 0) listos_exec.push(j);
             }
