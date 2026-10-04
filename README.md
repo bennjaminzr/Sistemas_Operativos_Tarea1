@@ -50,11 +50,11 @@ dependencias también pueden ir vacías si la actividad no espera a nada.
 
 ## Qué hace el programa, por partes
 
-**Leer el plan.** `plan.cpp` (bueno, por ahora todo está en `main.cpp`) lee el
-archivo línea por línea, separa cada línea por los `:` con la función
-`dividir`, y limpia los espacios con `recortar`. Si una línea no tiene los 4
-campos esperados, el programa avisa en qué línea está el problema y corta la
-ejecución ahí, en vez de intentar adivinar.
+**Leer el plan.** El programa lee el archivo línea por línea, separa cada
+línea por los `:` con la función `dividir`, y limpia los espacios con
+`recortar`. Si una línea no tiene los 4 campos esperados, el programa avisa
+en qué línea está el problema y corta la ejecución ahí, en vez de intentar
+adivinar.
 
 **Armar el grafo.** Cada actividad guarda los IDs de sus dependencias como
 texto, pero para trabajar rápido conviene tener todo en números. Por eso se
@@ -77,16 +77,39 @@ de ciclos revisando a cada rato si ya terminó).
 
 **Mensajes entre procesos.** Cuando un hijo termina, tiene que avisarle al
 padre. Para eso se usan pipes con nombre (FIFOs), uno por actividad, creados
-con el PID del hijo en el nombre del archivo
-(`/tmp/fifo_<pid>_<id>`) para que no choquen si alguien corre el programa dos
-veces al mismo tiempo. El hijo escribe "OK" o "FALLO" y cierra; el padre lo
-lee apenas confirma con `waitpid` que el hijo ya terminó.
+con el PID del hijo en el nombre del archivo (`/tmp/fifo_<pid>_<id>`) para que
+no choquen si alguien corre el programa dos veces al mismo tiempo. El hijo
+escribe "OK" o "FALLO" y cierra; el padre lo lee apenas confirma con
+`waitpid` que el hijo ya terminó.
 
 **Si algo falla.** El padre no se queda solo con el mensaje del pipe, también
 mira el código de salida real del proceso (`WIFEXITED`, `WEXITSTATUS`). Si una
 actividad falla, se marca a todos los que dependían de ella (y a los que
 dependían de esos, y así en cadena) para que nunca se ejecuten. El resto del
 plan, si no tiene nada que ver con la rama que falló, sigue como si nada.
+
+**Ctrl+C (SIGINT).** Se instala un manejador con `sigaction` que solo levanta
+una bandera (`interrumpido`), siguiendo la práctica de no hacer trabajo
+pesado dentro del handler. El programa revisa esa bandera entre cada
+iteración y, al detectarla, mata con `SIGKILL` a todos los procesos hijos que
+sigan activos, espera a que todos terminen, limpia los FIFOs pendientes y
+corta la ejecución.
+
+## Prueba de carga (10000 actividades)
+
+Para generar un plan grande y probar que el programa aguanta sin caerse ni
+colgarse:
+
+```bash
+python3 generar_plan_10mil.py
+./planificador plan_10mil.txt 50
+```
+
+El script arma un DAG de 10000 actividades donde cada una solo puede
+depender de actividades con un ID menor al suyo, lo que garantiza que el
+grafo nunca tenga ciclos sin necesidad de revisarlo aparte. Se probó con
+distintos valores de K, y el programa procesa las 10000 actividades
+completas sin caídas ni cuelgues.
 
 ## Por qué tomamos estas decisiones
 
@@ -112,9 +135,16 @@ aislamiento de errores funciona sin tener que inventar un formato especial
 dentro de `plan.txt`. Por defecto el programa es determinista (nunca falla
 nada), y solo si uno quiere probarlo activa la variable.
 
+Mantuvimos la temática del asado/Fiestas Patrias en los mensajes de consola
+(`"la comida se pone al fuego"`, `"no hay carbon"`, `"llegaron los pacos"`,
+etc.) porque el enunciado mismo plantea el programa así, con el señor Loyola
+organizando su celebración. Nos pareció una forma de mantener consistencia
+con el enunciado y darle una identidad más clara al proyecto, sin que afecte
+en nada la lógica ni el cumplimiento de los requisitos técnicos.
+
 ## Estado del proyecto
 
-Requisitos de la rúbrica están implementados:
+Requisitos de la rúbrica que están implementados:
 
 - Parseo de plan.txt
 - Modelado del DAG y detección de ciclos
