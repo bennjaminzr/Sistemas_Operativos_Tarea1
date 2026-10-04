@@ -91,8 +91,7 @@ plan, si no tiene nada que ver con la rama que falló, sigue como si nada.
 ## Por qué tomamos estas decisiones
 
 Usamos C++ y no C porque `std::string` y `std::vector` ahorran mucho trabajo
-de manejo de memoria que en C habría que hacer a mano, y para una tarea con
-este plazo eso importa.
+de manejo de memoria que en C habría que hacer a mano.
 
 El ID lo guardamos como string y no como número porque el enunciado dice que
 es alfanumérico, así que podría venir como "A1" y no solo como un entero.
@@ -113,13 +112,15 @@ aislamiento de errores funciona sin tener que inventar un formato especial
 dentro de `plan.txt`. Por defecto el programa es determinista (nunca falla
 nada), y solo si uno quiere probarlo activa la variable.
 
-## Qué falta
+## Estado del proyecto
 
-- [x] Parseo de plan.txt
-- [x] Modelado del DAG y detección de ciclos
-- [x] Creación de procesos por actividad
-- [x] Control de concurrencia K
-- [x] Paso de mensajes con pipes
-- [x] Aislamiento de errores
-- [x] Manejo de Ctrl+C (SIGINT)
-- [ ] Prueba con plan de 10000 actividades
+Requisitos de la rúbrica están implementados:
+
+- Parseo de plan.txt
+- Modelado del DAG y detección de ciclos
+- Creación de procesos por actividad
+- Control de concurrencia K
+- Paso de mensajes con pipes
+- Aislamiento de errores
+- Manejo de Ctrl+C (SIGINT)
+- Prueba de estrés con plan de 10000 actividades (ver `generar_plan_10mil.py`)
